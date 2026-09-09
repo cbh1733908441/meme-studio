@@ -1,0 +1,4 @@
+interface:
+  display_name: "Steam 机制匹配"
+  short_description: "为 Meme 体验目标寻找可回查的 Steam 与手机游戏机制，并提出互动候选"
+  default_prompt: "使用 $steam-mechanism-match 从这份 meme 特征卡的参与变量实际检索游戏机制，核验操作反馈与成立条件，标明来源支持范围、迁移缺口和最小验证。"

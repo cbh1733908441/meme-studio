@@ -1,0 +1,17 @@
+node_modules/
+.venv/
+runtime/bin/
+data-smoke/
+data/
+*.log
+.server.pid
+
+logs/
+validation.json
+runtime/doctor.json
+runtime/manifest.json
+.DS_Store
+.env
+.env.*
+__pycache__/
+*.pyc

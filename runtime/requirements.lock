@@ -1,0 +1,15 @@
+certifi==2026.7.22
+charset-normalizer==3.5.1
+greenlet==3.5.5
+idna==3.19
+jaraco.classes==3.4.0
+jaraco.context==6.1.2
+jaraco.functools==4.6.0
+keyring==25.7.0
+more-itertools==11.1.0
+playwright==1.62.0
+pyee==13.0.1
+requests==2.34.2
+typing_extensions==4.16.0
+urllib3==2.7.0
+yt-dlp==2026.8.19
