@@ -5,7 +5,7 @@
 ## 两步使用
 
 1. 输入 meme 名称、链接或版本说明。Agent 研究“素材到底哪一下有意思？依据是什么？”以及“要保住这个趣味，哪些东西不能随便改？”，自行核验并保留证据缺口。
-2. 用户确认版本并指定 **1–50 个选题**。依次运行游戏机制研究和一次整体玩法改编，结果展示一句话玩法、必要规则、玩家操控方式、素材使用、梗的趣味、最小实现、参考。
+2. 用户确认版本并指定 **1–50 个选题**。依次运行游戏机制研究和一次整体玩法改编，结果展示四项：玩法与简单规则（合成一句话，不超过 150 字）、素材使用、梗的趣味、参考。
 
 ```mermaid
 flowchart TD
@@ -14,24 +14,32 @@ flowchart TD
   C --> D[游戏机制研究：最多 5 分钟]
   D --> E[已确认的梗 + 实际素材目录 + 机制记录]
   E --> F[一次整体玩法改编]
-  F --> G[七项选题内容与素材播放]
+  F --> G[简洁选题内容与素材播放]
 ```
 
 全站共享 **3 个 CLI 名额**。同一任务研究后再改编，不同任务共享队列。CLI 内部子代理关闭，不修改用户全局配置。取消旧三路展开、独立审核和按审核状态过滤结果；后端只检查格式、编号、必要内容及引用关系。
 
 ## Skill 版本
 
-当前 `workflowVersion: 3`，Skill `meme-studio-v3.0.0`。每个任务复制 `vendor/skills` 并记录 `vendor/manifest.json` 的文件摘要；阶段工作目录只装载对应 Skill：
+本次发布说明见 [CHANGELOG.md](CHANGELOG.md)。
+
+当前 `workflowVersion: 3`，Skill `meme-studio-v3.0.5`（梗理解 `1.1.0`，改编 Skill `3.0.0`）。每个任务复制 `vendor/skills` 并记录 `vendor/manifest.json` 的文件摘要；阶段工作目录只装载对应 Skill：
 
 | 阶段 | Skill | 输入 → 输出 |
 | --- | --- | --- |
 | 梗理解 | meme-asset-extract | 输入/纠正 → 梗分支、依据、不能改的要素、素材 |
 | 机制研究 | game-mechanism-research | 已确认梗与素材 → 具体机制、依据、相关性、缺口 |
-| 玩法改编 | meme-mechanism-adaptation | 完整确认信息、素材、研究、数量 → 七项选题 |
+| 玩法改编 | meme-mechanism-adaptation | 完整确认信息、素材、研究、数量 → 玩法与简单规则（不超过 150 字）、素材使用、梗的趣味、参考 |
 
-素材 Python 脚本、依赖和配置保持原样，源自上游 `meme-asset-extract` 的 `7171f679`。当前梗理解前两问原文保存在素材 Skill 的 `references/meme-understanding.md`。旧 `meme-mechanism-concept`、`steam-mechanism-match` 不再装载；游戏元数据脚本迁入研究 Skill。
+素材 Python 脚本、依赖和配置保持原样，源自上游 `meme-asset-extract` 的 `7171f679`。梗理解两问保存在素材 Skill 的 `references/meme-understanding.md`；1.1 仅在完整素材 Skill 的“理解与选择”中补充：素材采用的传播与表现形式，不自动成为后续玩法的限制。旧 `meme-mechanism-concept`、`steam-mechanism-match` 不再装载；游戏元数据脚本迁入研究 Skill。
 
 历史 v1/v2 记录不转换、不改写，继续使用旧展示及导出。点击“使用同一素材新建研究”会以原始输入和链接建立 v3 任务。
+
+## 保留研究的断点实验
+
+已确认且有有效 v3 研究的任务，可点击“保留研究，只重新生成选题”。它通过 `POST /api/runs/:id/readapt` 新建结果记录，固定当前 Skill 快照，原样复用确认信息、素材与研究；不传入旧选题或聊天。原任务保持不变，来源任务和研究摘要哈希记录在 `checkpoint` 中。
+
+断点任务仅运行一次玩法改编，关闭该次 CLI 的网页搜索及沙箱命令网络。没有有效的同修订研究时直接拒绝，不回退到调研。失败后重试保留同一 Skill 快照和研究；主动修改梗理解后恢复完整流程。仍共享全站三个 CLI 名额。
 
 ## 5 分钟研究预算
 
@@ -104,3 +112,5 @@ node scripts/smoke.mjs
 完成自动测试及真实链路验证后提交到本仓库 main。先通过 `/api/meta` 检查 active/queued 均为 0，再停止并启动本地服务。`/api/meta` 和网页页脚提供 Skill 版本及实际启动时 Git commit，用于与 GitHub 核对。
 
 运行回归时停止服务、恢复上一提交的代码再启动；不要删除或迁移 `data`。旧代码不能解释 v3 结果时，保留记录等待恢复新版读取。测试记录在 `data-smoke`，不进入用户历史。
+
+新任务使用 `outputFormat: compact-v1`：玩法与简单规则合为一句话，最多 150 字（含标点）。生成格式、网页和导出同步精简；历史七项结果保留原样展示与导出，重试继续使用原格式。

@@ -442,7 +442,7 @@ function progress(r) {
         h(
           "span",
           { class: "job " + j.status },
-          j.label +
+            j.label + (j.reusedFromRunId ? "（复用）" : "") +
             " · " +
             ({
               queued: "排队",
@@ -553,7 +553,18 @@ function runPage(r) {
     ),
     stepper(second ? 2 : 1),
     progress(r),
+    r.checkpoint ? p(`断点实验 · 改编 Skill ${r.adaptationVersion} · 沿用原研究，没有重新调研`, "hint") : null,
   ];
+  if (r.workflowVersion === 3 && r.confirmed && r.research?.mechanisms?.length &&
+      !["analyzing", "generating"].includes(r.status) && meta.cli.available && meta.cli.loggedIn)
+    nodes.push(h("section", { class: "panel" },
+      p(`使用改编 Skill ${meta.adaptationVersion}，沿用已确认的梗、素材和研究，再生成 ${r.count} 个选题。旧结果保留。`, "muted"),
+      btn("保留研究，只重新生成选题", async () => {
+        const next = await api(`/api/runs/${r.id}/readapt`, { count: r.count });
+        selected = next.id;
+        localStorage.setItem("meme-studio-selected", selected);
+        drafts.branchId = "";
+      }, "secondary")));
   if (r.workflowVersion !== 3)
     nodes.push(
       h(
@@ -853,9 +864,9 @@ function runPage(r) {
             { class: "panel candidate" },
             p(c.id, "number"),
             h("h3", {}, c.title),
-            fact("一句话玩法", c.hook),
-            fact("必要规则", c.rules),
-            fact("玩家操控方式", c.controls),
+            ...(Object.hasOwn(c, "gameplay")
+              ? [fact("玩法与简单规则", c.gameplay)]
+              : [fact("一句话玩法", c.hook), fact("必要规则", c.rules), fact("玩家操控方式", c.controls)]),
             h("h4", {}, "素材使用"),
             ...c.media_usage.map((u) => {
               const a = r.assets.find((a) => a.id === u.asset_id);
@@ -880,7 +891,7 @@ function runPage(r) {
               );
             }),
             fact("梗的趣味", c.meme_interest),
-            fact("最小实现", c.minimum_implementation),
+            Object.hasOwn(c, "gameplay") ? null : fact("最小实现", c.minimum_implementation),
             h("h4", {}, "参考"),
             ...c.references.map((ref) => {
               const m = r.research.mechanisms.find(

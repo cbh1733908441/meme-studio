@@ -59,12 +59,9 @@ export function markdown(r, base = "http://127.0.0.1:4317") {
     for (const c of r.result.candidates) {
       lines.push(
         `## ${c.id} · ${c.title}`,
-        `### 一句话玩法`,
-        c.hook,
-        `### 必要规则`,
-        c.rules,
-        `### 玩家操控方式`,
-        c.controls,
+        ...(Object.hasOwn(c, "gameplay")
+          ? ["### 玩法与简单规则", c.gameplay]
+          : ["### 一句话玩法", c.hook, "### 必要规则", c.rules, "### 玩家操控方式", c.controls]),
         "### 素材使用",
       );
       for (const u of c.media_usage) {
@@ -91,8 +88,7 @@ export function markdown(r, base = "http://127.0.0.1:4317") {
       lines.push(
         "### 梗的趣味",
         c.meme_interest,
-        "### 最小实现",
-        c.minimum_implementation,
+        ...(Object.hasOwn(c, "gameplay") ? [] : ["### 最小实现", c.minimum_implementation]),
         "### 参考",
       );
       for (const ref of c.references) {
@@ -213,6 +209,8 @@ export function createApp({
           cli: info,
           pool: manager.pool.stats,
           skillVersion: SKILL_VERSION,
+          adaptationVersion: "3.0.0",
+          understandingVersion: "1.1.0",
           workflowVersion: 3,
           gitCommit,
         });
@@ -231,7 +229,7 @@ export function createApp({
         return send(res, 201, manager.create(await body(req)));
       }
       const match = p.match(
-        /^\/api\/runs\/([a-f0-9-]{36})(?:\/(confirm|revise|cancel|retry|export|media))?$/,
+        /^\/api\/runs\/([a-f0-9-]{36})(?:\/(confirm|revise|cancel|retry|readapt|export|media))?$/,
       );
       if (match) {
         const [, id, action] = match,
@@ -240,7 +238,7 @@ export function createApp({
           return send(res, 200, { run: r, pool: manager.pool.stats });
         if (
           req.method === "POST" &&
-          ["confirm", "revise", "cancel", "retry"].includes(action)
+          ["confirm", "revise", "cancel", "retry", "readapt"].includes(action)
         ) {
           if (!info.available || !info.loggedIn)
             throw new AppError("Codex CLI 不可用，请检查登录", 503);

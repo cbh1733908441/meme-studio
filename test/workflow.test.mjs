@@ -426,7 +426,7 @@ test("queued research has no startedAt or budget consumption until a CLI slot op
   assert.ok(queued.startedAt);
   assert.equal(queued.budgetMs, 300000);
 });
-test("v3 media IDs support Range and both exports contain all seven fields; unknown and deleted media are 404", async (t) => {
+test("v3 media IDs support Range and both exports contain compact fields; unknown and deleted media are 404", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "meme-media-"));
   const { server, manager } = createApp({
     dataDir: dir,
@@ -467,15 +467,14 @@ test("v3 media IDs support Range and both exports contain all seven fields; unkn
   assert.equal(await response.text(), "abc");
   const md = await (await fetch(base + "/export")).text();
   for (const field of [
-    "一句话玩法",
-    "必要规则",
-    "玩家操控方式",
+    "玩法与简单规则",
     "素材使用",
     "梗的趣味",
-    "最小实现",
     "参考",
   ])
     assert.ok(md.includes("### " + field));
+  for (const removed of ["一句话玩法", "必要规则", "玩家操控方式", "最小实现"])
+    assert.ok(!md.includes("### " + removed));
   assert.ok(md.includes(r.assets[0].id));
   const json = await (await fetch(base + "/export?format=json")).json();
   assert.deepEqual(json.result, r.result);

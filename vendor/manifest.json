@@ -1,5 +1,5 @@
 {
-  "version": "meme-studio-v3.0.0",
+  "version": "meme-studio-v3.0.5",
   "upstream": {
     "repository": "cbh1733908441/meme-asset-extract",
     "commit": "7171f6798b436b8812a6918e68be99a7524023d2"
@@ -19,7 +19,7 @@
     },
     {
       "path": "meme-asset-extract/SKILL.md",
-      "sha256": "132962879714dea01f4f842e7c0e9214c29ec93fed5f0597361fc8264dcf2831"
+      "sha256": "902d1b802abaf93e5a388d73fd06dde4e041f928eb5a1a91e14b946037305afc"
     },
     {
       "path": "meme-asset-extract/references/browser-audio.md",
@@ -63,7 +63,9 @@
     },
     {
       "path": "meme-mechanism-adaptation/SKILL.md",
-      "sha256": "902b8b465758e52a9190fc86bb5064f7e7368f1bedbfd226966df5495c1e7293"
+      "sha256": "0ea85eaa1223f9e21f7de706799c89fd1469fec85db2d769a836a3eff055194c"
     }
-  ]
+  ],
+  "adaptationVersion": "3.0.0",
+  "understandingVersion": "1.1.0"
 }
