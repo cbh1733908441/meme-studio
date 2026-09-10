@@ -160,7 +160,7 @@ function shell() {
           h("span", { class: "dot" }),
           "本地工作台",
           h("br"),
-          `Skill ${meta.skillVersion || meta.skillCommit?.slice(0, 7)} · 版本已固定`,
+          `Skill ${meta.skillVersion || meta.skillCommit?.slice(0, 7)} · ${meta.gitCommit?.slice(0, 7) || ""}`,
         ),
       ),
       h(
@@ -200,7 +200,7 @@ function stepper(step) {
     { class: "steps" },
     ...[
       [1, "理解并确认 meme", "哪一下有趣 · 依据 · 不能改什么"],
-      [2, "生成互动选题", "机制研究 · 并行展开 · 评审"],
+      [2, "生成互动选题", "5 分钟机制研究 · 玩法改编"],
     ].map(([i, title, desc]) =>
       h(
         "div",
@@ -307,7 +307,43 @@ function sources(items) {
     ...items.map((s) => link(s.url, s.title)),
   );
 }
+function assetPreview(a, r) {
+  const src = `/api/runs/${r.id}/media?assetId=${encodeURIComponent(a.id)}`;
+  const tag = a.mediaType.startsWith("image/")
+    ? "img"
+    : a.mediaType.startsWith("video/")
+      ? "video"
+      : "audio";
+  const el = h(tag, {
+    src,
+    ...(tag === "img"
+      ? { alt: a.caption, loading: "eager" }
+      : { controls: true, preload: "metadata" }),
+  });
+  el.addEventListener(
+    "error",
+    () =>
+      el.replaceWith(p("素材文件无法读取，请查看来源或重新获取。", "error")),
+    { once: true },
+  );
+  return h(
+    "figure",
+    {},
+    el,
+    h("figcaption", {}, a.caption),
+    a.sourceUrl ? link(a.sourceUrl, "打开来源") : null,
+  );
+}
 function media(branch, r) {
+  if (r.workflowVersion === 3)
+    return h(
+      "div",
+      { class: "media" },
+      ...(r.assets || [])
+        .filter((a) => a.branchIds.includes(branch.id))
+        .map((a) => assetPreview(a, r)),
+    );
+
   const job = [...r.jobs]
     .reverse()
     .find((j) => j.stage === "analysis" && j.status === "completed");
@@ -383,7 +419,8 @@ function branchCard(b, r, selectable) {
   );
 }
 function progress(r) {
-  const active = ["analyzing", "generating"].includes(r.status);
+  const active =
+    r.workflowVersion === 3 && ["analyzing", "generating"].includes(r.status);
   return h(
     "section",
     { class: "panel", "aria-live": "polite" },
@@ -432,6 +469,18 @@ function progress(r) {
           ),
         ),
     ),
+    ...r.jobs
+      .filter((j) => j.stage === "research" && j.revision === r.revision)
+      .slice(-1)
+      .map((j) =>
+        p(
+          j.status === "queued"
+            ? "研究排队中，尚未开始计时"
+            : j.startedAt
+              ? `研究用时 ${Math.min(300, Math.floor(((j.finishedAt ? Date.parse(j.finishedAt) : Date.now()) - Date.parse(j.startedAt)) / 1000))} 秒 / 300 秒`
+              : "研究准备中",
+        ),
+      ),
     r.error ? p(r.error, "error") : null,
     active
       ? btn(
@@ -439,7 +488,7 @@ function progress(r) {
           () => api(`/api/runs/${r.id}/cancel`, {}),
           "secondary",
         )
-      : r.workflowVersion === 2 &&
+      : r.workflowVersion === 3 &&
           ["failed", "cancelled", "interrupted"].includes(r.status)
         ? btn("重试这一阶段", () => api(`/api/runs/${r.id}/retry`, {}))
         : null,
@@ -457,12 +506,6 @@ function candidate(c, research) {
     ),
     p(c.hook, "hook"),
     p(c.player_action),
-    h(
-      "div",
-      { class: "traces" },
-      h("div", { class: "trace" }, h("strong", {}, "操作 A → 结果"), c.trace_a),
-      h("div", { class: "trace" }, h("strong", {}, "操作 B → 结果"), c.trace_b),
-    ),
     fact(
       "玩家操作以后，会发生什么值得他亲手体验的变化？",
       c.experience_change || "历史版本未记录",
@@ -511,13 +554,13 @@ function runPage(r) {
     stepper(second ? 2 : 1),
     progress(r),
   ];
-  if (r.workflowVersion !== 2)
+  if (r.workflowVersion !== 3)
     nodes.push(
       h(
         "section",
         { class: "panel" },
         h("h3", {}, "历史版本记录"),
-        p("此记录保留原流程。使用三问流程请新建研究，旧结果不会被改写。"),
+        p("此记录保留原流程。使用新版流程请新建研究，旧结果不会被改写。"),
         btn("使用同一素材新建研究", async () => {
           const next = await api("/api/runs", {
             meme: r.meme,
@@ -532,7 +575,7 @@ function runPage(r) {
     );
   if (r.analysis) {
     const selectable =
-      r.status === "awaiting_confirmation" && r.workflowVersion === 2;
+      r.status === "awaiting_confirmation" && r.workflowVersion === 3;
     if (
       !drafts.branchId ||
       !r.analysis.branches.some((b) => b.id === drafts.branchId)
@@ -586,7 +629,7 @@ function runPage(r) {
           { class: "panel confirm" },
           h("h2", {}, "确认版本，然后生成选题"),
           p(
-            "Agent 负责核验理解与依据；你选择要做的版本。选题数是上限，依据或操作价值不足时会少给，可能为零。",
+            "Agent 负责核验理解与依据；你选择要做的版本。按指定数量生成；材料不足而未完成时会明确说明。",
             "muted",
           ),
           field(
@@ -621,7 +664,7 @@ function runPage(r) {
                 notes: drafts.notes,
               }),
             ),
-            p("最多 3 路并行展开，最后统一检查。", "hint"),
+            p("研究最多 5 分钟，随后一次生成全部选题。", "hint"),
           ),
         ),
       );
@@ -638,7 +681,7 @@ function runPage(r) {
         ),
       );
   }
-  if (r.result) {
+  if (r.result && r.workflowVersion !== 3) {
     const supported = r.result.candidates.filter(
       (c) => c.status === "candidate",
     ).length;
@@ -716,7 +759,7 @@ function runPage(r) {
           p(r.research.discovery_queries.join("\n")),
           p(r.research.rejected_neighbors.join("\n")),
         ),
-        r.workflowVersion === 2 &&
+        r.workflowVersion === 3 &&
           details(
             "更换理解，重新开始",
             field(
@@ -736,6 +779,137 @@ function runPage(r) {
           ),
       ),
     );
+  }
+  if (r.workflowVersion === 3) {
+    if (r.research)
+      nodes.push(
+        h(
+          "section",
+          { class: "panel" },
+          r.research.timeLimited
+            ? p("研究达到时限，使用已有结果", "gaps")
+            : null,
+          details(
+            "机制研究、搜索与依据",
+            p(r.research.summary),
+            ...r.research.mechanisms.map((m) =>
+              details(
+                m.game + " · " + m.id,
+                p(m.platform_version + " · " + m.retrieved_at),
+                fact("玩家实际做什么", m.gameplay),
+                fact("规则", m.rules),
+                fact("操控", m.controls),
+                fact("反馈", m.feedback),
+                fact("操作价值依赖", m.value_conditions.join("；")),
+                fact("与梗的关联", m.relevance),
+                fact("缺口", m.gaps.join("；")),
+                sources(m.sources),
+                ...m.sources.map((s) => p(s.support)),
+              ),
+            ),
+            details(
+              "中文搜索目的与研究记录",
+              ...r.research.queries.map((q) => p(q.purpose + "：" + q.query)),
+            ),
+            details(
+              "CLI 实际搜索调用",
+              ...r.jobs
+                .filter((j) => j.id === r.research.jobId)
+                .flatMap((j) =>
+                  (j.searches || []).map((q) => p(q.queries.join("\n"))),
+                ),
+            ),
+          ),
+        ),
+      );
+    if (r.result)
+      nodes.push(
+        h(
+          "div",
+          { class: "results-header" },
+          h("h2", {}, `${r.result.candidates.length} 个选题`),
+          h(
+            "div",
+            { class: "actions" },
+            h(
+              "a",
+              { href: `/api/runs/${r.id}/export`, class: "secondary" },
+              "下载 Markdown",
+            ),
+            h(
+              "a",
+              {
+                href: `/api/runs/${r.id}/export?format=json`,
+                class: "secondary",
+              },
+              "JSON",
+            ),
+          ),
+        ),
+        r.result.shortfall_reason ? p(r.result.shortfall_reason, "gaps") : null,
+        ...r.result.candidates.map((c) =>
+          h(
+            "article",
+            { class: "panel candidate" },
+            p(c.id, "number"),
+            h("h3", {}, c.title),
+            fact("一句话玩法", c.hook),
+            fact("必要规则", c.rules),
+            fact("玩家操控方式", c.controls),
+            h("h4", {}, "素材使用"),
+            ...c.media_usage.map((u) => {
+              const a = r.assets.find((a) => a.id === u.asset_id);
+              return h(
+                "div",
+                { class: "media" },
+                p(
+                  [
+                    u.status === "used"
+                      ? "使用"
+                      : u.status === "missing"
+                        ? "待补"
+                        : "不使用",
+                    u.where,
+                    u.interaction,
+                    u.note,
+                  ]
+                    .filter(Boolean)
+                    .join("："),
+                ),
+                a ? assetPreview(a, r) : null,
+              );
+            }),
+            fact("梗的趣味", c.meme_interest),
+            fact("最小实现", c.minimum_implementation),
+            h("h4", {}, "参考"),
+            ...c.references.map((ref) => {
+              const m = r.research.mechanisms.find(
+                (m) => m.id === ref.mechanism_id,
+              );
+              return h(
+                "div",
+                {},
+                p(
+                  `${m.game}：借用 ${ref.borrowed}；改动 ${ref.changes}；原创 ${ref.original}`,
+                ),
+                sources(m.sources),
+              );
+            }),
+          ),
+        ),
+        details(
+          "修改梗理解，重新研究",
+          field("纠正说明", "correction", "说明需要修正的理解", true),
+          btn(
+            "回到梗分析",
+            () =>
+              api(`/api/runs/${r.id}/revise`, {
+                correction: drafts.correction,
+              }),
+            "secondary",
+          ),
+        ),
+      );
   }
   return nodes;
 }
@@ -788,6 +962,16 @@ try {
   shell();
   await refresh();
   setInterval(refresh, 1500);
+  setInterval(() => {
+    if (!current) return;
+    const j = current.jobs.find(
+      (j) => j.stage === "research" && j.status === "running" && j.startedAt,
+    );
+    if (j)
+      for (const e of document.querySelectorAll("p"))
+        if (e.textContent.startsWith("研究用时 "))
+          e.textContent = `研究用时 ${Math.min(300, Math.floor((Date.now() - Date.parse(j.startedAt)) / 1000))} 秒 / 300 秒`;
+  }, 1000);
 } catch (e) {
   root.replaceChildren(p("无法连接本地服务：" + e.message, "error"));
 }

@@ -1,73 +1,133 @@
-// Explicitly invoked integration check. Uses the real CLI and account usage.
+// Explicit developer integration check: real CLI, isolated records, one concept per meme.
 import fs from "node:fs";
 import path from "node:path";
 import { Manager } from "../lib/manager.mjs";
 import { runCodex, cliInfo } from "../lib/runner.mjs";
 import { ROOT } from "../server.mjs";
 const info = cliInfo();
-if (!info.available || !info.loggedIn) throw new Error("本地 Codex 不可用");
+if (!info.available || !info.loggedIn) throw Error("本地 Codex 不可用");
 const dataDir = path.resolve(
   process.env.SMOKE_DATA || path.join(ROOT, "data-smoke"),
 );
 const manager = new Manager({
   dataDir,
-  vendor: path.join(ROOT, "vendor", "skills"),
+  vendor: path.join(ROOT, "vendor/skills"),
   runner: runCodex,
   python: process.env.MEME_PYTHON || "python3",
 });
-const r = manager.create({
-  meme: "海绵宝宝想象力",
-  context:
-    "这是开发者主动启动的真实端到端连通性验收。目标是海绵宝宝双手展开彩虹、说 imagination 的传播版本。只保留这个分支；研究聚焦代表素材和一个具体玩法母体，避免扩展成大综述。素材不能直接看或听时，保留缺口。测试程序会明确确认这一目标并最多生成 1 个候选。",
-});
-console.log(JSON.stringify({ id: r.id, dataDir }));
+const targets = [
+  {
+    meme: "厉飞雨",
+    context:
+      "目标是《凡人修仙传》韩立借厉飞雨的名字行事、功过报不同姓名的传播梗，不是研究真实人物。请核验该版本，并尽可能获取可预览的代表素材。",
+  },
+  {
+    meme: "广东人吃福建人",
+    context:
+      "目标是网络中广东人把福建人当作食材、一本正经讨论吃法的虚构地域段子。请核验该版本，并尽可能获取可预览的代表素材。",
+  },
+];
+const reports = [];
 let last = "";
 const timer = setInterval(() => {
-  const s = manager.get(r.id),
-    line = JSON.stringify({
-      status: s.status,
-      phase: s.phase,
-      event: s.events.at(-1)?.message,
-    });
-  if (line !== last) {
-    console.log(line);
-    last = line;
+  const text = JSON.stringify(
+    manager
+      .list()
+      .filter((r) => ids.includes(r.id))
+      .map((r) => ({
+        id: r.id,
+        meme: r.meme,
+        status: r.status,
+        phase: r.phase,
+        event: manager.get(r.id).events.at(-1)?.message,
+      })),
+  );
+  if (text !== last) {
+    console.log(text);
+    last = text;
   }
 }, 5000);
+const ids = [];
 try {
-  await manager.idle(r.id);
-  let s = manager.get(r.id);
-  if (s.status !== "awaiting_confirmation")
-    throw new Error(s.error || s.status);
-  console.log("PASS: real analysis paused for confirmation");
-  manager.confirm(s.id, {
-    revision: s.revision,
-    branchId: s.analysis.recommended_branch_id,
-    count: 1,
-    notes: "开发者验收：明确确认上述想象力版本，保留全部未验证模态和玩法假设。",
-  });
-  await manager.idle(r.id);
-  s = manager.get(r.id);
-  if (s.status !== "completed" || s.result.candidates.length > 1)
-    throw new Error(s.error || s.status);
-  const report = {
-    passed: true,
-    at: new Date().toISOString(),
-    cli: info.version,
-    runId: s.id,
-    stages: s.jobs.map((j) => ({ stage: j.stage, status: j.status })),
-    requestedMaximum: 1,
-    count: s.result.candidates.length,
-    evidenceStatus: s.result.candidates.map(c => c.status),
-    shortfallReason: s.result.shortfall_reason,
-    peak: manager.pool.peak,
-  };
-  fs.writeFileSync(
-    path.join(dataDir, "validation.json"),
-    JSON.stringify(report, null, 2),
+  const resumeIds = (process.env.SMOKE_RESUME_IDS || "")
+    .split(",")
+    .filter(Boolean);
+  const outcomes = await Promise.allSettled(
+    targets.map(async (input, index) => {
+      const { id } = resumeIds[index]
+        ? manager.get(resumeIds[index])
+        : manager.create(input);
+      if (
+        resumeIds[index] &&
+        ["failed", "cancelled", "interrupted"].includes(manager.get(id).status)
+      )
+        manager.retry(id);
+      ids.push(id);
+      console.log(JSON.stringify({ id, meme: input.meme, dataDir }));
+      await manager.idle(id);
+      const r = manager.get(id);
+      if (r.status === "awaiting_confirmation")
+        manager.confirm(id, {
+          revision: r.revision,
+          branchId: r.analysis.recommended_branch_id,
+          count: 1,
+          notes: "开发者真实链路验收，明确确认上述目标版本，生成一个选题。",
+        });
+      await manager.idle(id);
+      if (r.status !== "completed" || r.result.candidates.length !== 1)
+        throw Error(r.meme + ": " + (r.error || "未产生一个选题"));
+      reports.push({
+        meme: r.meme,
+        runId: id,
+        passed: true,
+        stages: r.jobs.map((j) => ({
+          stage: j.stage,
+          status: j.status,
+          startedAt: j.startedAt,
+          finishedAt: j.finishedAt,
+          timeLimited: j.timeLimited,
+          searchCalls: j.searches?.length || 0,
+        })),
+        assets: r.assets.length,
+        mediaUsage: r.result.candidates[0].media_usage,
+        count: r.result.candidates.length,
+      });
+    }),
   );
-  console.log(JSON.stringify(report));
+  const passed = outcomes.every((x) => x.status === "fulfilled");
+  if (!passed) {
+    process.exitCode = 1;
+    for (const x of outcomes)
+      if (x.status === "rejected") console.error(x.reason.message);
+  }
+  console.log(JSON.stringify({ passed, reports, peak: manager.pool.peak }));
 } finally {
   clearInterval(timer);
   await manager.stop();
+  fs.writeFileSync(
+    path.join(dataDir, "validation.json"),
+    JSON.stringify(
+      {
+        at: new Date().toISOString(),
+        passed: reports.length === 2,
+        attempts: ids.map((id) => {
+          const r = manager.get(id);
+          return {
+            id,
+            meme: r.meme,
+            status: r.status,
+            error: r.error,
+            jobs: r.jobs,
+            assets: r.assets.length,
+          };
+        }),
+        cli: info.version,
+        reports,
+        runIds: ids,
+        peak: manager.pool.peak,
+      },
+      null,
+      2,
+    ),
+  );
 }

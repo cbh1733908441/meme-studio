@@ -2,6 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { Manager, AppError } from "./lib/manager.mjs";
 import { runCodex, cliInfo } from "./lib/runner.mjs";
@@ -48,7 +49,65 @@ async function body(req) {
     throw new AppError("需要有效的 JSON 对象");
   }
 }
-function markdown(r) {
+export function markdown(r, base = "http://127.0.0.1:4317") {
+  if (r.workflowVersion === 3) {
+    const lines = [
+      `# ${r.meme}：${r.result.candidates.length} 个选题`,
+      `Skill ${r.skillVersion}`,
+      r.result.summary,
+    ];
+    for (const c of r.result.candidates) {
+      lines.push(
+        `## ${c.id} · ${c.title}`,
+        `### 一句话玩法`,
+        c.hook,
+        `### 必要规则`,
+        c.rules,
+        `### 玩家操控方式`,
+        c.controls,
+        "### 素材使用",
+      );
+      for (const u of c.media_usage) {
+        const a = r.assets.find((a) => a.id === u.asset_id);
+        lines.push(
+          [
+            u.status === "used"
+              ? "使用"
+              : u.status === "missing"
+                ? "待补"
+                : "不使用",
+            u.where,
+            u.interaction,
+            u.note,
+          ]
+            .filter(Boolean)
+            .join("："),
+        );
+        if (a)
+          lines.push(
+            `[${a.caption || a.id}](${base}/api/runs/${r.id}/media?assetId=${encodeURIComponent(a.id)})`,
+          );
+      }
+      lines.push(
+        "### 梗的趣味",
+        c.meme_interest,
+        "### 最小实现",
+        c.minimum_implementation,
+        "### 参考",
+      );
+      for (const ref of c.references) {
+        const m = r.research.mechanisms.find((m) => m.id === ref.mechanism_id);
+        lines.push(
+          `${m.game}：借用 ${ref.borrowed}；改动 ${ref.changes}；原创 ${ref.original}`,
+          ...m.sources.map((s) => `[${s.title}](${s.url}) — ${s.support}`),
+        );
+      }
+    }
+    if (r.research.timeLimited) lines.push("研究达到时限，使用已有结果");
+    if (r.result.shortfall_reason) lines.push(r.result.shortfall_reason);
+    return lines.join("\n\n");
+  }
+
   const lines = [
     `# ${r.meme}：${r.result.candidates.filter((c) => c.status === "candidate").length} 个候选（上限 ${r.count}）`,
     "",
@@ -67,8 +126,6 @@ function markdown(r) {
       c.hook,
       "",
       `操作：${c.player_action}`,
-      `- A：${c.trace_a}`,
-      `- B：${c.trace_b}`,
       "",
       `亲手体验的变化：${c.experience_change || "历史版本未记录"}`,
       `如何保住趣味：${c.interest_connection || c.meme_relation}`,
@@ -127,6 +184,13 @@ export function createApp({
     limit: 3,
     python,
   });
+  let gitCommit = "unknown";
+  try {
+    gitCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    }).trim();
+  } catch {}
   const token = randomBytes(32).toString("hex");
   const server = http.createServer(async (req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -149,6 +213,8 @@ export function createApp({
           cli: info,
           pool: manager.pool.stats,
           skillVersion: SKILL_VERSION,
+          workflowVersion: 3,
+          gitCommit,
         });
       if (req.method === "GET" && p === "/api/runs")
         return send(res, 200, {
@@ -189,10 +255,19 @@ export function createApp({
               : "text/markdown; charset=utf-8",
             "Content-Disposition": `attachment; filename="meme-${id}.${isJson ? "json" : "md"}"`,
           });
-          return res.end(isJson ? JSON.stringify(r, null, 2) : markdown(r));
+          return res.end(
+            isJson ? JSON.stringify(r, null, 2) : markdown(r, `http://${host}`),
+          );
         }
         if (req.method === "GET" && action === "media") {
-          const rel = url.searchParams.get("path") || "";
+          const assetId = url.searchParams.get("assetId");
+          const asset = assetId
+            ? (r.assets || []).find((a) => a.id === assetId)
+            : null;
+          if (assetId && !asset) throw new AppError("素材不存在", 404);
+          const rel = asset
+            ? path.join(asset.jobId, asset.relativePath)
+            : url.searchParams.get("path") || "";
           const work = path.join(manager.folder(r), "work");
           const target = path.resolve(work, rel);
           if (

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Meme 机制选题"
-  short_description: "从梗的核心关系检索、重组并筛选值得测试的互动选题机制"
-  default_prompt: "使用 $meme-mechanism-concept 为这个 meme 研究可玩的互动机制，调用 Steam 机制搜索核验参考，只输出通过筛选的选题机制。"

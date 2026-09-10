@@ -1,10 +1,22 @@
 {
-  "version": "three-questions-v2",
+  "version": "meme-studio-v3.0.0",
   "upstream": {
     "repository": "cbh1733908441/meme-asset-extract",
     "commit": "7171f6798b436b8812a6918e68be99a7524023d2"
   },
   "files": [
+    {
+      "path": "game-mechanism-research/SKILL.md",
+      "sha256": "66cc99393d549258baaab7d68399722654297b6d6e3c4421dc5dcefc8d483cbe"
+    },
+    {
+      "path": "game-mechanism-research/references/retrieval.md",
+      "sha256": "ce8b2658c0a382a64426bfae51383ed0a3c34fb9365ed23600d660de66167fca"
+    },
+    {
+      "path": "game-mechanism-research/scripts/fetch_game.py",
+      "sha256": "d2d150aa67119236d372fd3cefbc18861d5902e5174a99adff77cc6cb1e15d92"
+    },
     {
       "path": "meme-asset-extract/SKILL.md",
       "sha256": "132962879714dea01f4f842e7c0e9214c29ec93fed5f0597361fc8264dcf2831"
@@ -16,6 +28,10 @@
     {
       "path": "meme-asset-extract/references/contract.md",
       "sha256": "6c6dac7f8e2cde42c1cbfa84b77f22e2661d9af448efcd544dceb96e7973a390"
+    },
+    {
+      "path": "meme-asset-extract/references/meme-understanding.md",
+      "sha256": "787bde2596e9bf78fc9c008f1bbae7c08edc3ec213a2639a85b143eb74556bf2"
     },
     {
       "path": "meme-asset-extract/references/source-selection.md",
@@ -46,48 +62,8 @@
       "sha256": "45f30f9f451a07cc319b6b3110c91eb0690856133dd367549cd35bdcbc38262e"
     },
     {
-      "path": "meme-mechanism-concept/SKILL.md",
-      "sha256": "44abbc14bce6ee95bfb35d88e85042b038ccab52e5a12f88fa9b45f02c097898"
-    },
-    {
-      "path": "meme-mechanism-concept/agents/openai.yaml",
-      "sha256": "581f9146258a0d13a51108d1c3185235cb1a10ac1cabe59399f28d2494340181"
-    },
-    {
-      "path": "meme-mechanism-concept/references/output-format.md",
-      "sha256": "11b1ae25364f64ea902d7959aee262b361bf3198cf3cc0738d535b6f309a7840"
-    },
-    {
-      "path": "meme-mechanism-concept/references/production-handoff.md",
-      "sha256": "5a1406e59a38cdc1d898d5f6abfb25ad932040a470e2788afc2ca0be7130a3fa"
-    },
-    {
-      "path": "meme-mechanism-concept/references/three-questions.md",
-      "sha256": "2f000d17fcc6e84f5b9e96ff35df5301c9aa4aca15294e41f48ee5b72203e136"
-    },
-    {
-      "path": "steam-mechanism-match/SKILL.md",
-      "sha256": "659167e3821d6236d7257928d8a48e227b1fc2a24cfa140b94cce3ff5b3ac7a5"
-    },
-    {
-      "path": "steam-mechanism-match/agents/openai.yaml",
-      "sha256": "94cff77fe3df65e4b6c4b88d3ae8e69503868ee31d5cb4bd21775627a4842372"
-    },
-    {
-      "path": "steam-mechanism-match/references/card-contract.md",
-      "sha256": "b1af35693313e8ecfb7324a8a192740fb392f03e8f8ecd058ca4b5663a41d646"
-    },
-    {
-      "path": "steam-mechanism-match/references/operation-walkthrough.md",
-      "sha256": "5d4e13ee4df3848322f8c711aad516db5141992babbf0a945e2d7b766acfa7f7"
-    },
-    {
-      "path": "steam-mechanism-match/references/retrieval.md",
-      "sha256": "ce8b2658c0a382a64426bfae51383ed0a3c34fb9365ed23600d660de66167fca"
-    },
-    {
-      "path": "steam-mechanism-match/scripts/fetch_game.py",
-      "sha256": "d2d150aa67119236d372fd3cefbc18861d5902e5174a99adff77cc6cb1e15d92"
+      "path": "meme-mechanism-adaptation/SKILL.md",
+      "sha256": "902b8b465758e52a9190fc86bb5064f7e7368f1bedbfd226966df5495c1e7293"
     }
   ]
 }

@@ -93,14 +93,24 @@ test("confirmation is mandatory, revision checked, x is an upper bound, workers 
   assert.equal(r.status, "completed");
   assert.equal(r.result.candidates.length, 7);
   assert.equal(calls.filter((c) => c.stage === "research").length, 1);
-  const workers = calls.filter((c) => c.stage === "draft");
-  assert.equal(workers.length, 3);
+  const workers = calls.filter((c) => c.stage === "adaptation");
+  assert.equal(workers.length, 1);
+  assert.equal(workers[0].ctx.count, 7);
   assert.deepEqual(
-    workers.flatMap((w) => w.ctx.assigned_ids).sort(),
-    Array.from({ length: 7 }, (_, i) => "T0" + (i + 1)),
+    calls.map((c) => c.stage),
+    ["analysis", "research", "adaptation"],
   );
-  assert.ok(workers.every((w) => w.ctx.research === workers[0].ctx.research));
-  assert.equal(m.pool.peak, 3);
+  assert.equal(m.pool.peak, 1);
+  assert.equal(r.workflowVersion, 3);
+  for (const c of calls) {
+    assert.deepEqual(fs.readdirSync(path.join(c.dir, ".agents", "skills")), [
+      {
+        analysis: "meme-asset-extract",
+        research: "game-mechanism-research",
+        adaptation: "meme-mechanism-adaptation",
+      }[c.stage],
+    ]);
+  }
   assert.ok(
     calls
       .filter((c) => c.stage !== "analysis")
@@ -144,7 +154,7 @@ test("malformed or wrong-count CLI results fail visibly; retry uses the confirme
   const m = harness(t, async (args) => {
     if (args.stage === "analysis" && fault === "schema") return {};
     const r = result(args);
-    if (args.stage === "audit" && fault === "count") r.candidates.pop();
+    if (args.stage === "adaptation" && fault === "count") r.candidates.pop();
     return r;
   });
   const run = m.create({ meme: "梗" });
@@ -281,98 +291,266 @@ test("HTTP boundaries, exact export and media traversal protection", async (t) =
   );
 });
 
-test("research may return fewer directions or none; hypothesis-only work never spawns writers", async (t) => {
-  for (const remaining of [0, 1]) {
-    const stages = [];
+test("timeout salvages only complete valid checkpoint from this attempt; empty and invalid stop adaptation", async (t) => {
+  for (const mode of ["valid", "empty", "invalid", "none"]) {
+    const calls = [];
     const m = harness(t, async (args) => {
-      stages.push(args.stage);
-      const data = result(args);
+      calls.push(args.stage);
+      args.onStart?.();
       if (args.stage === "research") {
-        data.directions = data.directions.slice(0, remaining + 1);
-        data.directions.at(-1).status = "hypothesis_only";
-        data.directions.at(-1).added_hypotheses = ["操作收益没有依据"];
+        assert.equal(args.timeoutMs, 300000);
+        let record = result(args);
+        if (mode === "empty") record.mechanisms = [];
+        if (mode === "invalid") record.mechanisms[0].sources[0].url = "fake";
+        if (mode !== "none")
+          fs.writeFileSync(
+            path.join(args.dir, "research-checkpoint.json"),
+            JSON.stringify(record),
+          );
+        throw Object.assign(Error("timeout"), { code: "STAGE_TIMEOUT" });
       }
-      return data;
+      return result(args);
     });
-    const { id } = m.create({ meme: "保留案例" });
+    const { id } = m.create({ meme: "超时恢复" });
     await m.idle(id);
-    m.confirm(id, { ...confirmation(m.get(id)), count: 4 });
+    m.confirm(id, confirmation(m.get(id)));
     await m.idle(id);
     const r = m.get(id);
-    assert.equal(r.status, "completed", r.error);
-    assert.equal(r.result.candidates.length, remaining);
-    assert.equal(stages.filter((s) => s === "draft").length, remaining);
-    assert.equal(stages.includes("audit"), remaining > 0);
-    assert.equal(r.result.rejected.length, 1);
-    assert.ok(r.result.shortfall_reason);
+    assert.equal(r.status, mode === "valid" ? "completed" : "failed", r.error);
+    assert.equal(calls.includes("adaptation"), mode === "valid");
+    if (mode === "valid") assert.equal(r.research.timeLimited, true);
   }
 });
-
-test("draft and audit rejections persist separately, including zero accepted candidates", async (t) => {
-  for (const rejectAt of ["draft", "audit"]) {
-    const m = harness(t, async (args) => {
-      const data = result(args);
-      if (args.stage === rejectAt) {
-        data.rejected = data.candidates.map((c) => ({
-          id: c.id,
-          title: c.title,
-          reason: "操作没有延续素材趣味",
-        }));
-        data.candidates = [];
-      }
-      return data;
-    });
-    const { id } = m.create({ meme: "保留案例" });
-    await m.idle(id);
-    m.confirm(id, { ...confirmation(m.get(id)), count: 3 });
-    await m.idle(id);
-    const r = m.get(id);
-    assert.equal(r.status, "completed", r.error);
-    assert.equal(r.result.candidates.length, 0);
-    assert.equal(r.result.rejected.length, 3);
-    assert.ok(r.result.shortfall_reason);
-  }
-});
-
-test("audit can retain one and reject others; weak statuses cannot leak to candidate cards", async (t) => {
+test("adaptation retry reuses same research; correction invalidates it", async (t) => {
+  let fail = true;
+  const calls = [];
   const m = harness(t, async (args) => {
-    const data = result(args);
-    if (args.stage === "draft" && data.candidates[0].id === "T01")
-      data.candidates[0].status = "needs_evidence";
-    if (args.stage === "audit") {
-      const c = data.candidates.pop();
-      data.rejected.push({
-        id: c.id,
-        title: c.title,
-        reason: "与另一方案重复",
-      });
+    calls.push(args.stage);
+    if (args.stage === "adaptation" && fail) throw Error("failure");
+    return result(args);
+  });
+  const { id } = m.create({ meme: "重试" });
+  await m.idle(id);
+  m.confirm(id, confirmation(m.get(id)));
+  await m.idle(id);
+  const research = structuredClone(m.get(id).research);
+  fail = false;
+  m.retry(id);
+  await m.idle(id);
+  assert.equal(m.get(id).status, "completed");
+  assert.deepEqual(m.get(id).research, research);
+  assert.equal(calls.filter((s) => s === "research").length, 1);
+  m.revise(id, { correction: "另一个版本" });
+  assert.equal(m.get(id).research, null);
+  await m.idle(id);
+  m.confirm(id, confirmation(m.get(id)));
+  await m.idle(id);
+  assert.equal(calls.filter((s) => s === "research").length, 2);
+});
+test("assets are registered from real files and referenced across stages; missing paths stay gaps", async (t) => {
+  const m = harness(t, async (args) => {
+    const r = result(args);
+    if (args.stage === "analysis") {
+      fs.writeFileSync(path.join(args.dir, "audio.wav"), "RIFFfixture");
+      r.branches[0].media = [
+        {
+          path: "audio.wav",
+          caption: "原声",
+          source_url: "https://example.com/media",
+          start_s: 1,
+          end_s: 3,
+        },
+        {
+          path: "missing.mp4",
+          caption: "未取得",
+          source_url: null,
+          start_s: null,
+          end_s: null,
+        },
+      ];
     }
-    return data;
+    return r;
   });
-  const { id } = m.create({ meme: "保留案例" });
-  await m.idle(id);
-  m.confirm(id, { ...confirmation(m.get(id)), count: 3 });
+  const { id } = m.create({ meme: "素材" });
   await m.idle(id);
   const r = m.get(id);
+  assert.equal(r.assets.length, 1);
+  assert.ok(r.analysis.branches[0].gaps.some((g) => g.includes("missing.mp4")));
+  m.confirm(id, confirmation(r));
+  await m.idle(id);
   assert.equal(r.status, "completed", r.error);
-  assert.equal(r.result.candidates.length, 1);
-  assert.deepEqual(r.result.rejected.map((x) => x.id).sort(), ["T01", "T03"]);
+  assert.equal(r.result.candidates[0].media_usage[0].asset_id, r.assets[0].id);
+});
+test("legacy snapshots remain unmodified and cannot be retried in v3", async (t) => {
+  const m = harness(t);
+  const { id } = m.create({ meme: "历史" });
+  await m.idle(id);
+  const r = m.get(id);
+  r.workflowVersion = 2;
+  r.status = "generating";
+  m.save(r);
+  const file = path.join(m.folder(r), "run.json"),
+    before = fs.readFileSync(file, "utf8");
+  const restored = new Manager({
+    dataDir: m.dataDir,
+    vendor: m.vendor,
+    runner: () => {
+      throw Error("must not run");
+    },
+  });
+  assert.equal(fs.readFileSync(file, "utf8"), before);
+  assert.throws(() => restored.revise(id, { correction: "重做" }), /历史任务/);
 });
 
-test("unknown or duplicate direction IDs fail; legacy snapshots cannot be reused with new schemas", async (t) => {
+test("queued research has no startedAt or budget consumption until a CLI slot opens", async (t) => {
+  let release;
+  const gate = new Promise((resolve) => (release = resolve));
+  let block = false;
   const m = harness(t, async (args) => {
-    const data = result(args);
-    if (args.stage === "research") data.directions[0].id = "T99";
-    return data;
+    args.onStart?.();
+    if (block && args.stage === "research") await gate;
+    return result(args);
   });
-  const { id } = m.create({ meme: "保留案例" });
+  const runs = Array.from({ length: 4 }, () => m.create({ meme: "队列" }));
+  await Promise.all(runs.map((r) => m.idle(r.id)));
+  block = true;
+  for (const r of runs) m.confirm(r.id, confirmation(m.get(r.id)));
+  await delay(10);
+  const queued = m.get(runs[3].id).jobs.at(-1);
+  assert.equal(queued.status, "queued");
+  assert.equal(queued.startedAt, undefined);
+  assert.equal(queued.budgetMs, undefined);
+  release();
+  await Promise.all(runs.map((r) => m.idle(r.id)));
+  assert.equal(queued.status, "completed");
+  assert.ok(queued.startedAt);
+  assert.equal(queued.budgetMs, 300000);
+});
+test("v3 media IDs support Range and both exports contain all seven fields; unknown and deleted media are 404", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "meme-media-"));
+  const { server, manager } = createApp({
+    dataDir: dir,
+    info: { available: true, loggedIn: true },
+    runner: async (args) => {
+      const r = result(args);
+      if (args.stage === "analysis") {
+        fs.writeFileSync(path.join(args.dir, "sample.wav"), "RIFFabcde");
+        r.branches[0].media = [
+          {
+            path: "sample.wav",
+            caption: "音频",
+            source_url: null,
+            start_s: null,
+            end_s: null,
+          },
+        ];
+      }
+      return r;
+    },
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    await manager.stop();
+    server.closeAllConnections();
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const { id } = manager.create({ meme: "完整输出" });
+  await manager.idle(id);
+  manager.confirm(id, confirmation(manager.get(id)));
+  await manager.idle(id);
+  const r = manager.get(id),
+    base = `http://127.0.0.1:${server.address().port}/api/runs/${id}`,
+    url = base + "/media?assetId=" + r.assets[0].id;
+  const response = await fetch(url, { headers: { range: "bytes=4-6" } });
+  assert.equal(response.status, 206);
+  assert.equal(await response.text(), "abc");
+  const md = await (await fetch(base + "/export")).text();
+  for (const field of [
+    "一句话玩法",
+    "必要规则",
+    "玩家操控方式",
+    "素材使用",
+    "梗的趣味",
+    "最小实现",
+    "参考",
+  ])
+    assert.ok(md.includes("### " + field));
+  assert.ok(md.includes(r.assets[0].id));
+  const json = await (await fetch(base + "/export?format=json")).json();
+  assert.deepEqual(json.result, r.result);
+  assert.equal((await fetch(base + "/media?assetId=unknown")).status, 404);
+  fs.unlinkSync(
+    path.join(
+      manager.folder(r),
+      "work",
+      r.assets[0].jobId,
+      r.assets[0].relativePath,
+    ),
+  );
+  assert.equal((await fetch(url)).status, 404);
+});
+test("invalid mechanism and asset references fail without content-quality filtering", async (t) => {
+  for (const fault of ["mechanism", "asset"]) {
+    const m = harness(t, async (args) => {
+      const r = result(args);
+      if (args.stage === "adaptation") {
+        if (fault === "mechanism")
+          r.candidates[0].references[0].mechanism_id = "unknown";
+        else
+          r.candidates[0].media_usage = [
+            {
+              status: "used",
+              asset_id: "invented",
+              where: "结果",
+              interaction: "播放",
+              note: "",
+            },
+          ];
+      }
+      return r;
+    });
+    const { id } = m.create({ meme: "引用检查" });
+    await m.idle(id);
+    m.confirm(id, confirmation(m.get(id)));
+    await m.idle(id);
+    assert.equal(m.get(id).status, "failed");
+    assert.match(m.get(id).error, /引用/);
+  }
+});
+
+test("changing installed skills during a run does not change its stage snapshot", async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "meme-snapshot-")),
+    vendor = path.join(dir, "vendor");
+  fs.cpSync(path.join(ROOT, "vendor/skills"), vendor, { recursive: true });
+  const calls = [];
+  const m = new Manager({
+    dataDir: path.join(dir, "data"),
+    vendor,
+    runner: async (args) => {
+      calls.push(args);
+      return result(args);
+    },
+  });
+  t.after(async () => {
+    await m.stop();
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  const { id } = m.create({ meme: "固定快照" });
   await m.idle(id);
-  m.confirm(id, { ...confirmation(m.get(id)), count: 2 });
+  const r = m.get(id),
+    before = structuredClone(r.skillSnapshot);
+  fs.appendFileSync(
+    path.join(vendor, "game-mechanism-research/SKILL.md"),
+    "\nTHIS_IS_A_LATER_VERSION\n",
+  );
+  m.confirm(id, confirmation(r));
   await m.idle(id);
-  const r = m.get(id);
-  assert.equal(r.status, "failed");
-  assert.match(r.error, /编号/);
-  delete r.workflowVersion;
-  assert.throws(() => m.retry(id), /历史任务/);
-  assert.throws(() => m.revise(id, { correction: "重做" }), /历史任务/);
+  assert.equal(r.status, "completed");
+  assert.ok(
+    !calls
+      .find((c) => c.stage === "research")
+      .prompt.includes("THIS_IS_A_LATER_VERSION"),
+  );
+  assert.deepEqual(r.skillSnapshot, before);
 });
