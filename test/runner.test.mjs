@@ -87,6 +87,15 @@ test("real process timeout starts at spawn, records searches and kills descendan
   } catch {
     alive = false;
   }
+  if (alive && process.platform === "linux") {
+    try {
+      // kill(pid, 0) also succeeds for an already-dead zombie awaiting reaping.
+      alive = !/^State:.*Z\s*\(zombie\)/m.test(fs.readFileSync(`/proc/${pid}/status`, "utf8"));
+    } catch (e) {
+      if (e.code === "ENOENT") alive = false;
+      else throw e;
+    }
+  }
   assert.equal(alive, false, "descendant must be dead");
 });
 test("cancellation stops the process without reporting budget timeout", async (t) => {

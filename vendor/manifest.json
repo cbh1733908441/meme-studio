@@ -1,5 +1,5 @@
 {
-  "version": "meme-studio-v3.0.5",
+  "version": "meme-studio-v3.1.2-research-only",
   "upstream": {
     "repository": "cbh1733908441/meme-asset-extract",
     "commit": "7171f6798b436b8812a6918e68be99a7524023d2"
@@ -7,7 +7,7 @@
   "files": [
     {
       "path": "game-mechanism-research/SKILL.md",
-      "sha256": "66cc99393d549258baaab7d68399722654297b6d6e3c4421dc5dcefc8d483cbe"
+      "sha256": "acacb705c45c70ddf6aa17465d98b4354d4398b1f742801f36eeb386afc377c1"
     },
     {
       "path": "game-mechanism-research/references/retrieval.md",
@@ -63,9 +63,9 @@
     },
     {
       "path": "meme-mechanism-adaptation/SKILL.md",
-      "sha256": "0ea85eaa1223f9e21f7de706799c89fd1469fec85db2d769a836a3eff055194c"
+      "sha256": "51329882897c53749b4948c2db7a92e3b11edc5da81fd3ca277ccb7472ef2a94"
     }
   ],
-  "adaptationVersion": "3.0.0",
+  "adaptationVersion": "3.1.0",
   "understandingVersion": "1.1.0"
 }

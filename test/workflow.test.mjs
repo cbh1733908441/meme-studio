@@ -298,7 +298,7 @@ test("timeout salvages only complete valid checkpoint from this attempt; empty a
       calls.push(args.stage);
       args.onStart?.();
       if (args.stage === "research") {
-        assert.equal(args.timeoutMs, 300000);
+        assert.equal(args.timeoutMs, 100000);
         let record = result(args);
         if (mode === "empty") record.mechanisms = [];
         if (mode === "invalid") record.mechanisms[0].sources[0].url = "fake";
@@ -316,9 +316,13 @@ test("timeout salvages only complete valid checkpoint from this attempt; empty a
     m.confirm(id, confirmation(m.get(id)));
     await m.idle(id);
     const r = m.get(id);
-    assert.equal(r.status, mode === "valid" ? "completed" : "failed", r.error);
-    assert.equal(calls.includes("adaptation"), mode === "valid");
-    if (mode === "valid") assert.equal(r.research.timeLimited, true);
+    assert.equal(r.status, "failed", r.error);
+    assert.equal(calls.includes("adaptation"), false);
+    if (mode === "valid") {
+      assert.equal(r.research.timeLimited, true);
+      assert.equal(r.researchProgress.status, "exhausted");
+      assert.equal(r.research.roundsCompleted, 3);
+    }
   }
 });
 test("adaptation retry reuses same research; correction invalidates it", async (t) => {
@@ -424,7 +428,7 @@ test("queued research has no startedAt or budget consumption until a CLI slot op
   await Promise.all(runs.map((r) => m.idle(r.id)));
   assert.equal(queued.status, "completed");
   assert.ok(queued.startedAt);
-  assert.equal(queued.budgetMs, 300000);
+  assert.equal(queued.budgetMs, 100000);
 });
 test("v3 media IDs support Range and both exports contain compact fields; unknown and deleted media are 404", async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "meme-media-"));
